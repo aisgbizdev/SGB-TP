@@ -1,6 +1,6 @@
-# [Project name]
+# TradePilot.id — SGB-TP
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Imported application from https://github.com/aisgbizdev/SGB-TP.git. Preserve the existing product, pages, authentication and database schema rather than redesigning them.
 
 ## Run & Operate
 
@@ -22,11 +22,17 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- Web PWA: `artifacts/ai-trading`; API: `artifacts/api-server`.
+- Database schema: `lib/db/src/schema/index.ts`.
+- API contract and generated clients: `lib/api-spec`, `lib/api-client-react`, `lib/api-zod`.
+- Original mobile companion source: `artifacts/mobile`; it is not yet registered or verified as a mobile preview here.
+- Native mobile dependencies and the optional Dart generator are excluded from this web import because their `shell-quote` dependency is blocked by the package firewall. Source is retained; `codegen` regenerates the web/API clients only.
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Use this project's managed PostgreSQL database, not the supplied external Neon database.
+- Preserve imported custom authentication; this is a repository import, not a new auth implementation.
+- Keep direct OpenAI tier keys compatible when provided; otherwise use Replit AI Integrations.
 
 ## Product
 
@@ -34,7 +40,7 @@ _Describe the high-level user-facing capabilities of this app once they exist._
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Create only tables, fields, enums, indexes and relationships from the source schema. Do not copy data from Neon and do not seed old accounts or business records.
 
 ## Gotchas
 

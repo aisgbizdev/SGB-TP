@@ -1,1 +1,1 @@
-- [Database import scope](database-import-scope.md) — use the source-code schema to create a fresh database; never copy data from the supplied Neon database.
+- [PWA preview redirects](pwa-preview-redirects.md) — browser worker requests can be redirected by the preview proxy even when curl returns 200.

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "TradePilot.id"
+description = "Aplikasi TradePilot.id dari repo SGB-TP, dengan PostgreSQL baru berdasarkan schema asli tanpa menyalin data lama."
+version = "1.0.0"
+id = "artifacts/ai-trading"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20853
+
+[services.development]
+run = "pnpm --filter @workspace/ai-trading run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/ai-trading", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/ai-trading/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20853"
+BASE_PATH = "/"
