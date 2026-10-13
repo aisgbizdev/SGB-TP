@@ -1,0 +1,1 @@
+- [Database import scope](database-import-scope.md) — use the source-code schema to create a fresh database; never copy data from the supplied Neon database.
