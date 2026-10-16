@@ -11,6 +11,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import router from "./routes";
+import tradePilotRouter from "./routes/trade-pilot";
+import healthRouter from "./routes/health";
+import { isLegacyApiEnabled } from "./middleware/auth";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
@@ -116,7 +119,16 @@ app.use(
 );
 app.use(express.urlencoded({ extended: true }));
 
-app.use("/api", router);
+app.use("/v1/trade-pilot", tradePilotRouter);
+if (isLegacyApiEnabled()) {
+  app.use("/api", router);
+} else {
+  // Legacy API is off (see isLegacyApiEnabled): keep only the health probe.
+  app.use("/api", healthRouter);
+  app.use("/api", (_req: Request, res: Response) => {
+    res.status(404).json({ error: "Not found" });
+  });
+}
 
 // In production the api-server also serves the ai-trading SPA so the
 // whole app runs as a single Cloud Run service on a single port.
