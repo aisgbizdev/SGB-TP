@@ -1,14 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { eq, inArray, like } from "drizzle-orm";
 
 import app from "../../app";
 import { db } from "../../lib/db";
 import {
   users,
-  sessions,
   analyses,
 } from "@workspace/db/schema";
 
@@ -31,25 +29,15 @@ let bob: SeedUser;
 async function createUser(): Promise<SeedUser> {
   const suffix = randomBytes(6).toString("hex");
   const email = `${EMAIL_PREFIX}-${suffix}@example.test`;
-  const passwordHash = await bcrypt.hash("not-used", 4);
-  const securityAnswerHash = await bcrypt.hash("answer", 4);
   const [row] = await db
     .insert(users)
     .values({
       email,
-      passwordHash,
       displayName: `Analyses Test ${RUN_ID} ${suffix}`,
-      securityQuestion: "test?",
-      securityAnswerHash,
     })
     .returning({ id: users.id });
 
-  const token = `analyses-${RUN_ID}-${suffix}-${randomBytes(8).toString("hex")}`;
-  await db.insert(sessions).values({
-    userId: row.id,
-    token,
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-  });
+  const token = `test-user-${row.id}`;
   seededUserIds.push(row.id);
   return { id: row.id, email, token };
 }
@@ -109,7 +97,6 @@ afterAll(async () => {
     await db.delete(analyses).where(inArray(analyses.id, seededAnalysisIds));
   }
   if (seededUserIds.length > 0) {
-    await db.delete(sessions).where(inArray(sessions.userId, seededUserIds));
     await db.delete(users).where(inArray(users.id, seededUserIds));
   }
   await db.delete(users).where(like(users.email, `${EMAIL_PREFIX}%`));

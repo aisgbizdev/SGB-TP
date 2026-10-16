@@ -11,11 +11,6 @@ import { EmbedProvider } from "@/lib/embed-mode";
 import { ProtectedRoute } from "@/components/protected-route";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
-import PrivacySecurityPage from "@/pages/privacy-security";
-import LoginPage from "@/pages/login";
-import RegisterPage from "@/pages/register";
-import ForgotPasswordPage from "@/pages/forgot-password";
-import TiktokCompleteSignupPage from "@/pages/tiktok-complete-signup";
 import AnalyzePage from "@/pages/analyze";
 import AnalysisDetailPage from "@/pages/analysis-detail";
 import HistoryPage from "@/pages/history";
@@ -50,21 +45,6 @@ const queryClient = new QueryClient({
   },
 });
 
-function AuthRedirect({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
-  const [location, setLocation] = useLocation();
-
-  useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      if (location === "/login" || location === "/register") {
-        setLocation("/analyze");
-      }
-    }
-  }, [isAuthenticated, isLoading, location, setLocation]);
-
-  return <>{children}</>;
-}
-
 function ThemeSync() {
   const { user } = useAuth();
   const { setTheme } = useTheme();
@@ -80,13 +60,18 @@ function ThemeSync() {
 
 function Router() {
   return (
-    <AuthRedirect>
-      <Switch>
+    <Switch>
         <Route path="/" component={LandingPage} />
-        <Route path="/login" component={LoginPage} />
-        <Route path="/register" component={RegisterPage} />
-        <Route path="/forgot-password" component={ForgotPasswordPage} />
-        <Route path="/auth/tiktok/complete-signup" component={TiktokCompleteSignupPage} />
+        {/* The built-in login system was removed; stale links land in the app. */}
+        <Route path="/login">
+          <Redirect to="/analyze" />
+        </Route>
+        <Route path="/register">
+          <Redirect to="/analyze" />
+        </Route>
+        <Route path="/forgot-password">
+          <Redirect to="/analyze" />
+        </Route>
         <Route path="/privacy">
           <LegalPage kind="privacy" />
         </Route>
@@ -130,9 +115,7 @@ function Router() {
           <Redirect to="/history?view=summary" />
         </Route>
         <Route path="/profile/privacy-security">
-          <ProtectedRoute>
-            <PrivacySecurityPage />
-          </ProtectedRoute>
+          <Redirect to="/profile" />
         </Route>
         <Route path="/profile">
           <ProtectedRoute>
@@ -214,7 +197,6 @@ function Router() {
         </Route>
         <Route component={NotFound} />
       </Switch>
-    </AuthRedirect>
   );
 }
 

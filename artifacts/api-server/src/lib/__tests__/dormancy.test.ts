@@ -1,6 +1,5 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { inArray, eq, desc } from "drizzle-orm";
 
 import { db } from "../db";
@@ -20,10 +19,7 @@ async function createUser(overrides: Partial<typeof users.$inferInsert> = {}): P
     .insert(users)
     .values({
       email: `dormancy-${RUN_ID}-${suffix}@example.test`,
-      passwordHash: await bcrypt.hash("x", 4),
       displayName: `Dormancy ${RUN_ID} ${suffix}`,
-      securityQuestion: "q?",
-      securityAnswerHash: await bcrypt.hash("a", 4),
       ...overrides,
     })
     .returning({ id: users.id });

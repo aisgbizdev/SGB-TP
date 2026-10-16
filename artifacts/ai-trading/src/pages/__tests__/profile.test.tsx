@@ -3,9 +3,7 @@
  *
  * Covers the happy-path render of the user identity card (display name
  * + email + role + mode badges) and the theme picker; the
- * password-section toggle which expands the change-password sub-form
- * (a state-transition branch that proves the collapsed/expanded paths
- * both wire up); and a user action that edits the display name and
+ * absence of the removed password/security/logout controls; and a user action that edits the display name and
  * fires `PATCH /api/auth/profile` with the new name in the request
  * body.
  *
@@ -120,9 +118,9 @@ describe("ProfilePage: happy-path render", () => {
     expect(screen.getByTestId("button-theme-dark")).not.toHaveClass("flex-1");
 
     const settings = screen.getByTestId("profile-settings-group");
-    expect(settings).toContainElement(screen.getByTestId("button-toggle-password-section"));
-    expect(settings).toContainElement(screen.getByTestId("button-toggle-security-section"));
-    expect(settings).toContainElement(screen.getByTestId("button-go-privacy-security"));
+    expect(screen.queryByTestId("button-toggle-password-section")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("button-toggle-security-section")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("button-go-privacy-security")).not.toBeInTheDocument();
     expect(screen.queryByTestId("card-delete-account")).not.toBeInTheDocument();
     expect(screen.queryByTestId("button-open-delete-account")).not.toBeInTheDocument();
     expect(settings).toContainElement(screen.getByTestId("button-go-my-alerts"));
@@ -131,39 +129,8 @@ describe("ProfilePage: happy-path render", () => {
     expect(screen.getByTestId("button-go-notification-settings")).toHaveTextContent("Choose push, notification types");
     expect(await screen.findByTestId("badge-credit-balance")).toHaveTextContent("12");
 
-    // Logout button is rendered at the bottom of the page.
-    expect(screen.getByTestId("button-logout")).toBeInTheDocument();
-  });
-});
-
-describe("ProfilePage: collapsible password section", () => {
-  it("shows the password sub-form inputs only after the change-password section is toggled open", async () => {
-    installFetchMock(profileHandlers({}));
-    const { Wrapper } = makeWrapper();
-
-    render(
-      <Wrapper>
-        <ProfilePage />
-      </Wrapper>,
-    );
-
-    // Collapsed by default: the new-password input is not in the DOM.
-    expect(screen.queryByTestId("input-current-password")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("input-new-password")).not.toBeInTheDocument();
-
-    const toggle = await screen.findByTestId("button-toggle-password-section");
-
-    await act(async () => {
-      fireEvent.click(toggle);
-    });
-
-    // After toggling, all three password inputs should render.
-    expect(
-      await screen.findByTestId("input-current-password"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("input-new-password")).toBeInTheDocument();
-    expect(screen.getByTestId("input-confirm-password")).toBeInTheDocument();
-    expect(screen.getByTestId("button-save-password")).toBeInTheDocument();
+    // Built-in login is gone, so there is no logout control.
+    expect(screen.queryByTestId("button-logout")).not.toBeInTheDocument();
   });
 });
 

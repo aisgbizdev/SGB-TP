@@ -217,7 +217,7 @@ export function LandingProductPreview() {
                   </div>
                   {!loading && (
                     <Link
-                      href="/login"
+                      href="/analyze"
                       className="mt-5 flex h-10 min-w-[220px] max-w-full items-center justify-center gap-2 rounded-lg px-6 text-xs font-bold tracking-wide btn-premium transition-transform hover:scale-[1.01] active:scale-[0.99]"
                       data-testid="landing-preview-login"
                     >

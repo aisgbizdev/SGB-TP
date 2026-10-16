@@ -1,14 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { eq, inArray, ilike } from "drizzle-orm";
 
 import app from "../../app";
 import { db } from "../../lib/db";
 import {
   users,
-  sessions,
   notifications,
   userTags,
   broadcasts,
@@ -35,27 +33,17 @@ let regularUser: SeedUser;
 async function createUser(role: Role): Promise<SeedUser> {
   const suffix = randomBytes(6).toString("hex");
   const email = `${EMAIL_PREFIX}-${role}-${suffix}@example.test`;
-  const passwordHash = await bcrypt.hash("not-used-by-tests", 4);
-  const securityAnswerHash = await bcrypt.hash("answer", 4);
 
   const [row] = await db
     .insert(users)
     .values({
       email,
-      passwordHash,
       displayName: `Bcast Test ${role} ${suffix}`,
       role,
-      securityQuestion: "test?",
-      securityAnswerHash,
     })
     .returning({ id: users.id });
 
-  const token = `bcast-${RUN_ID}-${suffix}-${randomBytes(8).toString("hex")}`;
-  await db.insert(sessions).values({
-    userId: row.id,
-    token,
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-  });
+  const token = `test-user-${row.id}`;
 
   const seed: SeedUser = { id: row.id, email, token };
   seeded.push(seed);
@@ -86,7 +74,6 @@ afterAll(async () => {
   // Cascade safety net for anything still tied to our seeded users.
   await db.delete(notifications).where(inArray(notifications.userId, ids));
   await db.delete(userTags).where(inArray(userTags.userId, ids));
-  await db.delete(sessions).where(inArray(sessions.userId, ids));
   await db
     .delete(broadcasts)
     .where(inArray(broadcasts.senderId, ids));

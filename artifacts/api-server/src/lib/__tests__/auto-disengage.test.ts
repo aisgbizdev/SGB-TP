@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { eq, inArray } from "drizzle-orm";
 
 import { db } from "../db";
@@ -16,10 +15,7 @@ async function createTestUser(overrides: Partial<typeof users.$inferInsert> = {}
     .insert(users)
     .values({
       email: `disengage-${RUN_ID}-${suffix}@example.test`,
-      passwordHash: await bcrypt.hash("not-used", 4),
       displayName: `Disengage ${RUN_ID} ${suffix}`,
-      securityQuestion: "test?",
-      securityAnswerHash: await bcrypt.hash("answer", 4),
       pushPriceAnomaly: true,
       ...overrides,
     })

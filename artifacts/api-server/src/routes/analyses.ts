@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { db } from "../lib/db";
 import { analyses, feedback, users, aiTokenUsage } from "@workspace/db/schema";
 import { eq, and, or, desc, count, sql, gte, lte, ilike, inArray, notInArray } from "drizzle-orm";
@@ -561,7 +561,14 @@ type QuotaOutcome =
   | { kind: "day"; used: number; limit: number }
   | { kind: "aiError" };
 
-router.post("/analyses", requireAuth, async (req: AuthRequest, res) => {
+/**
+ * POST /analyses core. Exported so the TradePilot client-area adapter
+ * (routes/trade-pilot.ts) runs the exact same pipeline — feeds, AI call,
+ * persistence, credit deduction only after a successful AI result.
+ * `req.creditOnly` skips the free lifetime allowance, so every analysis must
+ * be paid for from the credit ledger.
+ */
+export async function createAnalysisHandler(req: AuthRequest, res: Response): Promise<void> {
   const { instrument, timeframe, mode, userInputContext } = req.body;
 
   if (!instrument || !timeframe || !mode) {
@@ -864,7 +871,7 @@ router.post("/analyses", requireAuth, async (req: AuthRequest, res) => {
     // Atomically: take a per-user xact-scoped advisory lock, count usage,
     // call AI, and insert. The lock auto-releases on COMMIT/ROLLBACK so
     // concurrent requests for the same user cannot bypass the quota.
-    const { perDay } = await getEffectiveQuota(userId);
+    const { perDay } = req.creditOnly ? { perDay: 0 } : await getEffectiveQuota(userId);
     outcome = await db.transaction<QuotaOutcome>(async (tx) => {
       const lockRow = await tx.execute(
         sql`SELECT pg_try_advisory_xact_lock(${ANALYSIS_LOCK_NAMESPACE}::int, ${userId}::int) AS acquired`
@@ -1045,7 +1052,9 @@ router.post("/analyses", requireAuth, async (req: AuthRequest, res) => {
     creditConsumed: outcome.creditConsumed,
     ...(outcome.creditBalance !== undefined ? { creditBalance: outcome.creditBalance } : {}),
   });
-});
+}
+
+router.post("/analyses", requireAuth, createAnalysisHandler);
 
 router.get("/analyses", requireAuth, async (req: AuthRequest, res) => {
   // Clamp pagination so a malicious or malformed `page` / `limit` (negative,

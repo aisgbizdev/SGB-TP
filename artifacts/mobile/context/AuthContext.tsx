@@ -1,9 +1,12 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { setAuthTokenGetter } from "@workspace/api-client-react";
-import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import { getMe } from "@workspace/api-client-react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
-const TOKEN_KEY = "@trade_pilot_token";
-const USER_KEY = "@trade_pilot_user";
+// The built-in login (email/password, OAuth, stored bearer token) was
+// removed. The signed-in user is whatever GET /auth/me resolves to on the
+// server (see api-server middleware/auth.ts resolveIdentity). When the new
+// login system lands, this is the place to attach its credentials — e.g.
+// register a token getter with `setAuthTokenGetter` from
+// @workspace/api-client-react.
 
 export interface AuthUser {
   id: number;
@@ -18,70 +21,37 @@ export interface AuthUser {
 
 interface AuthContextValue {
   user: AuthUser | null;
-  token: string | null;
   isLoading: boolean;
-  signIn: (token: string, user: AuthUser) => Promise<void>;
-  signOut: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
-  token: null,
   isLoading: true,
-  signIn: async () => {},
-  signOut: async () => {},
+  refresh: async () => {},
 });
 
-const tokenRef = { current: null as string | null };
-
-setAuthTokenGetter(() => tokenRef.current);
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [storedToken, storedUser] = await Promise.all([
-          AsyncStorage.getItem(TOKEN_KEY),
-          AsyncStorage.getItem(USER_KEY),
-        ]);
-        if (storedToken && storedUser) {
-          tokenRef.current = storedToken;
-          setToken(storedToken);
-          setUser(JSON.parse(storedUser) as AuthUser);
-        }
-      } catch {
-      } finally {
-        setIsLoading(false);
-      }
-    })();
+  const refresh = useCallback(async () => {
+    try {
+      const me = await getMe();
+      setUser(me as AuthUser);
+    } catch {
+      setUser(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  async function signIn(newToken: string, newUser: AuthUser) {
-    await Promise.all([
-      AsyncStorage.setItem(TOKEN_KEY, newToken),
-      AsyncStorage.setItem(USER_KEY, JSON.stringify(newUser)),
-    ]);
-    tokenRef.current = newToken;
-    setToken(newToken);
-    setUser(newUser);
-  }
-
-  async function signOut() {
-    await Promise.all([
-      AsyncStorage.removeItem(TOKEN_KEY),
-      AsyncStorage.removeItem(USER_KEY),
-    ]);
-    tokenRef.current = null;
-    setToken(null);
-    setUser(null);
-  }
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, isLoading, refresh }}>
       {children}
     </AuthContext.Provider>
   );

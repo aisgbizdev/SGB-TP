@@ -1,7 +1,7 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { db } from "../lib/db";
-import { outboundClicks, analyticsEvents, sessions, users } from "@workspace/db/schema";
-import { eq, and, gt } from "drizzle-orm";
+import { outboundClicks, analyticsEvents } from "@workspace/db/schema";
+import { getAuthContext } from "../middleware/auth";
 import { RecordOutboundClickBody, TrackAnalyticsEventBody } from "@workspace/api-zod";
 import { trackEventLimiter } from "../middleware/rate-limit";
 import { parseUserAgent, lookupCountry, resolveClientIpForGeo } from "../lib/request-meta";
@@ -15,27 +15,11 @@ const router: IRouter = Router();
 const MAX_METADATA_BYTES = 2048;
 
 // Shared by every fire-and-forget telemetry route below: resolve the
-// signed-in user (if any) from the session cookie/Bearer header without
-// requiring auth. Never throws — telemetry must never crash the request.
-async function resolveUserId(req: {
-  cookies?: Record<string, string>;
-  headers: { authorization?: string };
-}): Promise<number | null> {
-  const token =
-    req.cookies?.["session_token"] ||
-    req.headers["authorization"]?.replace("Bearer ", "");
-  if (!token) return null;
-  try {
-    const [session] = await db
-      .select({ userId: sessions.userId })
-      .from(sessions)
-      .innerJoin(users, eq(users.id, sessions.userId))
-      .where(and(eq(sessions.token, token), gt(sessions.expiresAt, new Date())))
-      .limit(1);
-    return session ? session.userId : null;
-  } catch {
-    return null;
-  }
+// caller (if any) without requiring auth. Never throws — telemetry must
+// never crash the request.
+async function resolveUserId(req: Request): Promise<number | null> {
+  const ctx = await getAuthContext(req);
+  return ctx ? ctx.userId : null;
 }
 
 // Fire-and-forget client telemetry. Auth is *optional* — splash, landing,

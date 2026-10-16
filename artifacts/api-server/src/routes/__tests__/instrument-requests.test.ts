@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import app from "../../app";
 import { db } from "../../lib/db";
-import { instrumentRequests, sessions, users } from "@workspace/db/schema";
+import { instrumentRequests, users } from "@workspace/db/schema";
 
 const suffix = randomBytes(4).toString("hex");
 const code = `TEST${suffix.toUpperCase()}`;
@@ -17,8 +17,7 @@ beforeAll(async () => {
       displayName: "Request test",
       role,
     }).returning({ id: users.id });
-    const token = `request-test-${randomBytes(20).toString("hex")}`;
-    await db.insert(sessions).values({ userId: person.id, token, expiresAt: new Date(Date.now() + 3600000) });
+    const token = `test-user-${person.id}`;
     people.push({ id: person.id, token });
   }
 });
@@ -27,7 +26,6 @@ afterAll(async () => {
   if (!people.length) return;
   const ids = people.map((person) => person.id);
   await db.delete(instrumentRequests).where(inArray(instrumentRequests.userId, ids));
-  await db.delete(sessions).where(inArray(sessions.userId, ids));
   await db.delete(users).where(inArray(users.id, ids));
 });
 

@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startBackgroundJobs, stopBackgroundJobs } from "./lib/jobs";
 import { pool } from "./lib/db";
+import { assertIdentityConfigured } from "./middleware/auth";
 
 const rawPort = process.env["PORT"];
 
@@ -16,6 +17,8 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+assertIdentityConfigured();
 
 const server = app.listen(port, (err) => {
   if (err) {

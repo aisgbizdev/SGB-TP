@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { inArray } from "drizzle-orm";
 
 import { db } from "../db";
@@ -22,10 +21,7 @@ async function createTestUser(): Promise<number> {
     .insert(users)
     .values({
       email: `guards-${RUN_ID}-${suffix}@example.test`,
-      passwordHash: await bcrypt.hash("not-used", 4),
       displayName: `Guard ${RUN_ID} ${suffix}`,
-      securityQuestion: "test?",
-      securityAnswerHash: await bcrypt.hash("answer", 4),
     })
     .returning({ id: users.id });
   seededUserIds.push(row.id);

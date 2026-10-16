@@ -30,7 +30,7 @@ export default function LandingPage() {
 
   useEffect(() => {
     if (!isEmbed || isLoading) return;
-    setLocation(isAuthenticated ? "/analyze?embed=1" : "/login?embed=1");
+    setLocation(isAuthenticated ? "/analyze?embed=1" : "/analyze?embed=1");
   }, [isEmbed, isAuthenticated, isLoading, setLocation]);
 
   useEffect(() => {
@@ -51,13 +51,6 @@ export default function LandingPage() {
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-5 py-4 sm:px-8 lg:px-10">
           <BrandLogo variant="horizontal" className="h-8 w-auto sm:h-9" />
           <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-[#f1f0eb]/25 px-4 text-sm font-semibold text-[#f1f0eb] transition-colors hover:border-[#f1f0eb]/60 hover:bg-[#f1f0eb]/5"
-              data-testid="button-header-login"
-            >
-              {t.landing.login}
-            </Link>
             <LanguageToggle />
           </div>
         </div>
@@ -84,19 +77,12 @@ export default function LandingPage() {
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3 sm:mt-9">
               <Link
-                href="/register"
+                href="/analyze"
                 className="inline-flex min-h-12 items-center justify-center gap-3 rounded-lg bg-primary px-6 text-sm font-bold text-[#11100e] transition-transform hover:-translate-y-0.5 active:translate-y-0"
                 data-testid="button-get-started"
               >
                 {t.landing.register}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </Link>
-              <Link
-                href="/login"
-                className="inline-flex min-h-12 items-center justify-center rounded-lg border border-[#f1f0eb]/25 px-6 text-sm font-semibold text-[#f1f0eb] transition-colors hover:border-[#f1f0eb]/60 hover:bg-[#f1f0eb]/5"
-                data-testid="button-sign-in"
-              >
-                {t.landing.login}
               </Link>
             </div>
             <p className="mt-4 text-xs leading-relaxed text-[#f1f0eb]/45" data-testid="text-always-free-note">

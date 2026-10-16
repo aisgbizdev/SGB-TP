@@ -13,7 +13,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 
 class FakeFcmError extends Error {
@@ -87,18 +86,12 @@ beforeAll(async () => {
     .insert(schema.users)
     .values({
       email,
-      passwordHash: await bcrypt.hash("not-used", 4),
       displayName: `Native Push Cfg ${RUN_ID}`,
     })
     .returning({ id: schema.users.id });
   userId = row!.id;
 
-  token = `${RUN_ID}-${randomBytes(8).toString("hex")}`;
-  await db.insert(schema.sessions).values({
-    userId,
-    token,
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-  });
+  token = `test-user-${userId}`;
 });
 
 afterAll(async () => {

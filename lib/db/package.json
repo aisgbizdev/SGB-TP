@@ -8,7 +8,8 @@
     "./schema": "./src/schema/index.ts"
   },
   "scripts": {
-    "push": "drizzle-kit push --config ./drizzle.config.ts"
+    "push": "drizzle-kit push --config ./drizzle.config.ts",
+    "seed:super-admin": "node ./scripts/seed-super-admin.mjs"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",

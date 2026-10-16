@@ -21,27 +21,9 @@ export default function ProfileScreen() {
   const colors = useColors();
   const { t, lang, setLang } = useLang();
   const insets = useSafeAreaInsets();
-  const { user, signOut, token } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
-  const [isSigningOut, setIsSigningOut] = useState(false);
   const progression = useGetProgressionSummary();
-
-  const handleSignOut = async () => {
-    setIsSigningOut(true);
-    try {
-      await fetch(
-        `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/auth/logout`,
-        {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        },
-      ).catch(() => {});
-    } finally {
-      await signOut();
-      setIsSigningOut(false);
-      router.replace("/(auth)/login");
-    }
-  };
 
   const s = StyleSheet.create({
     root: {
@@ -124,18 +106,6 @@ export default function ProfileScreen() {
     toggleBtnActive: { borderColor: colors.primary, backgroundColor: colors.primary + "14" },
     toggleText: { fontSize: 13, fontFamily: "Inter_500Medium", color: colors.mutedForeground },
     toggleTextActive: { color: colors.primary, fontFamily: "Inter_600SemiBold" },
-    signOutBtn: {
-      backgroundColor: colors.card,
-      borderRadius: colors.radius,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.destructive + "40",
-      paddingVertical: 15,
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "center",
-      gap: 8,
-    },
-    signOutText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.destructive },
     modeBadge: {
       backgroundColor: colors.primary + "18",
       paddingHorizontal: 10,
@@ -251,21 +221,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <View style={[s.section, { marginTop: 32 }]}>
-          <Pressable
-            style={({ pressed }) => [s.signOutBtn, { opacity: pressed ? 0.7 : 1 }]}
-            onPress={handleSignOut}
-            disabled={isSigningOut}
-          >
-            {isSigningOut ? (
-              <ActivityIndicator color={colors.destructive} size="small" />
-            ) : (
-              <>
-                <Feather name="log-out" size={18} color={colors.destructive} />
-                <Text style={s.signOutText}>{t.profile.sign_out}</Text>
-              </>
-            )}
-          </Pressable>
         </View>
         </View>
       </ScrollView>

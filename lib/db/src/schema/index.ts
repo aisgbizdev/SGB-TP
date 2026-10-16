@@ -161,36 +161,14 @@ export const nativePushPlatformEnum = pgEnum("native_push_platform", [
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
-  // Nullable: accounts created via Google OAuth have no local password
-  // (and no security question). Every password/security-question route
-  // guards for null before calling bcrypt — see routes/auth.ts.
-  passwordHash: text("password_hash"),
-  // Google account subject id ("sub" claim). Set when a user signs in
-  // with Google — either on first sign-up or when an existing email
-  // account links Google. Null for password-only accounts.
-  googleId: text("google_id").unique(),
-  // Apple account subject id ("sub" claim of a verified Sign in with Apple
-  // identity token). Same shape/rules as googleId: set on first Apple
-  // sign-in or when an existing email account links Apple; null otherwise.
-  // See lib/apple-account.ts for the account-linking rules.
-  appleId: text("apple_id").unique(),
-  // Facebook account id (Graph API `id`). Same shape/rules as googleId —
-  // Facebook's `email` permission returns a Facebook-confirmed address
-  // for the account, so this links by email exactly like Google/Apple.
-  // See lib/facebook-account.ts.
-  facebookId: text("facebook_id").unique(),
-  // TikTok account open_id. Unlike Google/Apple, TikTok's Login Kit never
-  // returns an email — so a TikTok sign-in can never auto-link to an
-  // existing account by email the way Google/Apple do. A brand-new TikTok
-  // login always goes through the pendingTiktokSignups flow (collect a
-  // real email first) before a user row is created. See
-  // lib/tiktok-account.ts.
-  tiktokId: text("tiktok_id").unique(),
-  // Captured from TikTok's user.info.basic scope at sign-in time — this is
-  // the actual product goal of TikTok login (building a base of users'
-  // TikTok identities), independent of auth. Refreshed on every login.
-  tiktokDisplayName: text("tiktok_display_name"),
-  tiktokAvatarUrl: text("tiktok_avatar_url"),
+  // TradePilot client-area integration (/v1/trade-pilot). `externalId` is the
+  // opaque userId sent by the client-area (HMAC of the SGB email — never the
+  // email itself); `accountMode` is "demo" | "real". One local row exists per
+  // (externalId, accountMode) pair, which keeps credits, history and results
+  // separated per mode with no extra column on any other table. Both are null
+  // for users that did not come through that API.
+  externalId: text("external_id"),
+  accountMode: text("account_mode"),
   displayName: text("display_name").notNull(),
   avatarUrl: text("avatar_url"),
   role: roleEnum("role").notNull().default("user"),
@@ -199,12 +177,6 @@ export const users = pgTable("users", {
   onboardingCompleted: boolean("onboarding_completed")
     .notNull()
     .default(false),
-  // Nullable for the same reason as passwordHash: Google-OAuth accounts
-  // never set a security question. The forgot-password flow treats a null
-  // hash as "no match" (timing-safe) so these accounts simply can't use
-  // security-question recovery.
-  securityQuestion: text("security_question"),
-  securityAnswerHash: text("security_answer_hash"),
   pushExpiry: boolean("push_expiry").notNull().default(true),
   pushBroadcast: boolean("push_broadcast").notNull().default(true),
   // Daily-summary push (task #113). Three columns control delivery:
@@ -297,13 +269,6 @@ export const users = pgTable("users", {
   dailySummaryTime: text("daily_summary_time").notNull().default("07:00"),
   dailySummaryTimezone: text("daily_summary_timezone").notNull().default("Asia/Jakarta"),
   dailySummaryLastSentDate: text("daily_summary_last_sent_date"),
-  // Persistent brute-force protection for /auth/forgot-password/verify.
-  // The IP+email rate limiter is in-memory (resets on restart) and
-  // bypassable via IP rotation; these columns layer a per-account
-  // counter + temporary lockout that survives restarts and applies no
-  // matter where the wrong-answer attempts come from.
-  failedResetAttempts: integer("failed_reset_attempts").notNull().default(0),
-  resetLockedUntil: timestamp("reset_locked_until"),
   // Per-user analysis-quota override (admin dashboard). Null means "use
   // the global default" (see ANALYSIS_QUOTA_PER_DAY in routes/analyses.ts,
   // itself admin-configurable). A non-null value overrides just this one
@@ -343,215 +308,44 @@ export const users = pgTable("users", {
   progressionNotificationsEnabled: boolean("progression_notifications_enabled").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-// platform distinguishes a cookie-issuing website login from a
-// Bearer-token native/mobile-app login (set once at creation in
-// lib/session.ts's createSingleSession — never changes for a session's
-// lifetime). Needed because the 15-minute idle auto-logout in
-// middleware/auth.ts applies to "web" sessions only; native app sessions
-// keep relying solely on expiresAt, since a mobile app can legitimately
-// sit backgrounded for a long time without that meaning the user left.
-export const sessionPlatformEnum = pgEnum("session_platform", ["web", "native"]);
-
-export const sessions = pgTable("sessions", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  token: text("token").notNull().unique(),
-  // Updated (throttled, not on every single request) each time a "web"
-  // session makes an authenticated request — see requireAuth. Ignored for
-  // "native" sessions, which never idle-time-out.
-  platform: sessionPlatformEnum("platform").notNull().default("web"),
-  lastActivityAt: timestamp("last_activity_at").notNull().defaultNow(),
-  expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// Append-only per-event login/logout log — deliberately NOT inferred from
-// `sessions` row creation/deletion, because createSingleSession's
-// delete-then-reinsert collapses repeat same-day logins into one row, and
-// a session row can also disappear via single-session replacement or
-// account deletion, neither of which is a user-initiated logout. This is
-// the source for the admin dashboard's "Login Hari Ini"/"Logout Hari Ini"
-// counters (counted per event, not per unique user — see routes/admin.ts).
-export const authEventTypeEnum = pgEnum("auth_event_type", ["login", "logout"]);
-
-export const authEvents = pgTable("auth_events", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  eventType: authEventTypeEnum("event_type").notNull(),
-  platform: sessionPlatformEnum("platform").notNull(),
-  // Only meaningful for "logout": "user_initiated" (POST /auth/logout),
-  // "idle_timeout" (15-minute web idle auto-logout), or
-  // "account_deleted". Single-session replacement (logging in elsewhere)
-  // is deliberately NOT logged as a logout — it isn't user-initiated and
-  // would double-count against the same login that caused it.
-  reason: text("reason"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => ({
-  userFk: foreignKey({
-    name: "auth_events_user_id_fkey",
-    columns: [t.userId],
-    foreignColumns: [users.id],
-  }).onDelete("cascade"),
-  createdAtIdx: index("auth_events_created_at_idx").on(t.createdAt),
+  externalModeUnique: uniqueIndex("users_external_id_account_mode_unique").on(t.externalId, t.accountMode),
 }));
 
-export const passwordResetTokens = pgTable("password_reset_tokens", {
+// Saved trading plans from the client-area calculator (POST /v1/trade-pilot/
+// trading-plans). The sizing math stays in the front end; this only stores
+// the inputs. One row per (user, analysis, variant) — saving again updates it.
+export const tpTradingPlans = pgTable("tp_trading_plans", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  token: text("token").notNull().unique(),
-  expiresAt: timestamp("expires_at").notNull(),
-  usedAt: timestamp("used_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// Short-lived, single-use re-authentication tokens. Issued after a fresh
-// identity proof (e.g. a fresh Google ID token) and consumed by one
-// sensitive operation. `tokenHash` is a SHA-256 of the raw token — the raw
-// value only ever exists in the issuing response and the consuming
-// request. `purpose` binds a token to one operation (e.g. "delete_account").
-export const reauthTokens = pgTable("reauth_tokens", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  tokenHash: text("token_hash").notNull().unique(),
-  purpose: text("purpose").notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  usedAt: timestamp("used_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// Holds a verified TikTok profile between GET /auth/tiktok/callback and
-// POST /auth/tiktok/complete-signup for a brand-new TikTok sign-in (no
-// existing tiktok_id match). TikTok's Login Kit never returns an email, so
-// the user row can't be created yet at callback time — the raw token is
-// set in a short-lived httpOnly cookie (never in a URL) and this row is
-// the server-side source of truth for the profile it names; a client can't
-// forge which tiktok_id gets attached to the account it creates. Same
-// shape/rationale as reauthTokens (hashed token, single-use via
-// `usedAt`), but for an anonymous pre-account flow instead of an
-// already-known user.
-export const pendingTiktokSignups = pgTable("pending_tiktok_signups", {
-  id: serial("id").primaryKey(),
-  tokenHash: text("token_hash").notNull().unique(),
-  tiktokId: text("tiktok_id").notNull(),
-  displayName: text("display_name"),
-  avatarUrl: text("avatar_url"),
-  // Set only when this pending signup was reached via the mobile OAuth
-  // browser flow (GET /auth/tiktok/mobile/start), not the website. Lets
-  // POST /auth/tiktok/complete-signup know to finish the linked
-  // mobileOauthTransactions row (issue a one-time exchange code and hand
-  // the browser back to the app) instead of creating a normal web
-  // session/cookie. Null for an ordinary website signup. FK defined below
-  // with an explicit short name — Drizzle's auto-generated name for this
-  // pair (`pending_tiktok_signups_mobile_transaction_id_mobile_oauth_transactions_id_fk`)
-  // exceeds Postgres's 63-byte identifier limit, gets silently truncated
-  // on creation, and then never matches what `drizzle-kit push` expects on
-  // the next run — every push after the first would re-"fix" it forever.
-  mobileTransactionId: integer("mobile_transaction_id"),
-  expiresAt: timestamp("expires_at").notNull(),
-  usedAt: timestamp("used_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  analysisId: integer("analysis_id").notNull().references(() => analyses.id, { onDelete: "cascade" }),
+  variant: text("variant").notNull(),
+  accountType: text("account_type").notNull(),
+  tradingCapital: text("trading_capital").notNull(),
+  lossLimit: text("loss_limit").notNull(),
+  riskStyle: text("risk_style").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => ({
-  mobileTransactionFk: foreignKey({
-    name: "pending_tiktok_signups_mobile_tx_fk",
-    columns: [t.mobileTransactionId],
-    foreignColumns: [mobileOauthTransactions.id],
-  }).onDelete("set null"),
+  perUserAnalysisVariant: uniqueIndex("tp_trading_plans_user_analysis_variant_unique").on(t.userId, t.analysisId, t.variant),
 }));
 
-// Persistent (never in-memory — the API can run as multiple instances)
-// state for the mobile OAuth browser flow: Flutter opens a system browser
-// at GET /auth/{facebook,tiktok}/mobile/start, which redirects to the
-// provider with a `state` that maps to one row here instead of a cookie
-// (a native system-browser tab can't rely on the app's own cookie jar the
-// way a same-origin web redirect can). The existing web
-// GET /auth/{facebook,tiktok}/callback routes tell mobile and web apart by
-// checking whether the incoming `state` matches a row here BEFORE falling
-// back to their existing cookie-based check — the web flow's behavior is
-// completely unchanged when it doesn't.
-//
-// Two phases, tracked by which columns are set:
-//   1. "pending"  — issued by /mobile/start; provider hasn't verified yet.
-//   2. "issued"   — the provider callback verified the user and stashed
-//      `userId` + `exchangeCodeHash` + `codeExpiresAt`; POST
-//      /auth/mobile/exchange is the only consumer, and it's a short
-//      (60-120s) window by design — this is a handoff, not a session.
-// `consumedAt` makes the exchange one-time-use; enforced atomically via a
-// conditional UPDATE ... WHERE consumed_at IS NULL (see lib/mobile-oauth.ts),
-// the same pattern topups.ts and reauth.ts already use for single-use rows.
-export const mobileOauthTransactions = pgTable("mobile_oauth_transactions", {
+// Idempotency records for POST /v1/trade-pilot/analyses. A key is scoped to the
+// local user row; the same key + same request hash replays the stored response
+// for 24h instead of charging a credit again. `response` stays null while the
+// first request is still running.
+export const tpIdempotencyKeys = pgTable("tp_idempotency_keys", {
   id: serial("id").primaryKey(),
-  // SHA-256 of the `state` value round-tripped through the provider —
-  // this IS the CSRF/session-binding check (equivalent to the web flow's
-  // cookie-equals-query-param comparison), so the raw value is never
-  // stored.
-  stateHash: text("state_hash").notNull().unique("mobile_oauth_transactions_state_hash_key"),
-  provider: text("provider").notNull(), // "facebook" | "tiktok"
-  // Validated once at /mobile/start against MOBILE_OAUTH_REDIRECT_URIS
-  // (exact-match allowlist, never re-validated from client input again) —
-  // reused verbatim for every subsequent redirect this transaction makes.
-  redirectUri: text("redirect_uri").notNull(),
-  mobileCodeChallenge: text("mobile_code_challenge").notNull(),
-  mobileCodeChallengeMethod: text("mobile_code_challenge_method").notNull().default("S256"),
-  // TikTok's OWN PKCE verifier for its provider-side code exchange
-  // (equivalent to the tt_oauth_verifier cookie the web flow uses) — a
-  // system browser tab started fresh by the app can't carry that cookie
-  // back to a different backend instance, so it lives here instead.
-  // Unused for Facebook (no provider-side PKCE in this app's flow).
-  providerCodeVerifier: text("provider_code_verifier"),
-  userId: integer("user_id"),
-  isNewUser: boolean("is_new_user").notNull().default(false),
-  exchangeCodeHash: text("exchange_code_hash").unique("mobile_oauth_transactions_exchange_code_hash_key"),
-  codeExpiresAt: timestamp("code_expires_at"),
-  consumedAt: timestamp("consumed_at"),
-  expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
+  requestHash: text("request_hash").notNull(),
+  statusCode: integer("status_code"),
+  response: jsonb("response").$type<unknown>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => ({
-  userFk: foreignKey({
-    name: "mobile_oauth_transactions_user_id_fkey",
-    columns: [t.userId],
-    foreignColumns: [users.id],
-  }).onDelete("cascade"),
+  perUserKey: uniqueIndex("tp_idempotency_user_key_unique").on(t.userId, t.key),
 }));
 
-// Short-lived, single-use handoff from a logged-in mobile app session to
-// a browser tab, so tapping "Kredit Analisis" in Profil doesn't force a
-// second login. POST /auth/web-handoff (Bearer-authenticated) mints a row
-// here and hands the raw code back in a URL; GET /auth/web-handoff/consume
-// (no auth — opened in the system browser) looks it up by hash, atomically
-// claims it via `UPDATE ... WHERE used_at IS NULL AND expires_at > now()`
-// (same one-time-use idiom as mobileOauthTransactions/topups/reauth — see
-// lib/web-handoff.ts), and mints a *web* session for userId before
-// redirecting to `next`. 60s TTL — this is a same-moment handoff, not a
-// session of its own. Deliberately its own table rather than reusing
-// mobileOauthTransactions: that table's columns (provider, redirectUri,
-// PKCE challenge) are OAuth-specific and don't apply here.
-export const webHandoffCodes = pgTable("web_handoff_codes", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  codeHash: text("code_hash").notNull().unique("web_handoff_codes_code_hash_key"),
-  // Relative path only, checked against an allowlist at issue time
-  // (see isAllowedNextPath in lib/web-handoff.ts) and never re-read from
-  // client input at consume time — the browser GET only ever reads this
-  // column, never a query parameter, so there is no open-redirect surface.
-  next: text("next").notNull(),
-  usedAt: timestamp("used_at"),
-  expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (t) => ({
-  userFk: foreignKey({
-    name: "web_handoff_codes_user_id_fkey",
-    columns: [t.userId],
-    foreignColumns: [users.id],
-  }).onDelete("cascade"),
-}));
 
 export const analyses = pgTable("analyses", {
   id: serial("id").primaryKey(),
@@ -1029,7 +823,6 @@ export const broadcasts = pgTable("broadcasts", {
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
-export type Session = typeof sessions.$inferSelect;
 export type Analysis = typeof analyses.$inferSelect;
 export type NewAnalysis = typeof analyses.$inferInsert;
 export type Feedback = typeof feedback.$inferSelect;

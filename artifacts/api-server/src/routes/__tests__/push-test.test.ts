@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from "vitest";
 import request from "supertest";
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { eq, inArray, like } from "drizzle-orm";
 
 vi.mock("../../lib/webpush", () => ({
@@ -13,7 +12,7 @@ vi.mock("../../lib/webpush", () => ({
 import { sendPushToUser } from "../../lib/webpush";
 import app from "../../app";
 import { db } from "../../lib/db";
-import { users, sessions, pushSubscriptions, notifications } from "@workspace/db/schema";
+import { users, pushSubscriptions, notifications } from "@workspace/db/schema";
 import { pushTestLimiter } from "../../middleware/rate-limit";
 
 const sendPushToUserMock = sendPushToUser as unknown as ReturnType<typeof vi.fn>;
@@ -35,25 +34,15 @@ let bob: SeedUser;
 async function createUser(): Promise<SeedUser> {
   const suffix = randomBytes(6).toString("hex");
   const email = `${EMAIL_PREFIX}-${suffix}@example.test`;
-  const passwordHash = await bcrypt.hash("not-used", 4);
-  const securityAnswerHash = await bcrypt.hash("answer", 4);
   const [row] = await db
     .insert(users)
     .values({
       email,
-      passwordHash,
       displayName: `Push Test ${RUN_ID} ${suffix}`,
-      securityQuestion: "test?",
-      securityAnswerHash,
     })
     .returning({ id: users.id });
 
-  const token = `push-${RUN_ID}-${suffix}-${randomBytes(8).toString("hex")}`;
-  await db.insert(sessions).values({
-    userId: row.id,
-    token,
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-  });
+  const token = `test-user-${row.id}`;
   seededUserIds.push(row.id);
   return { id: row.id, email, token };
 }
@@ -82,7 +71,6 @@ afterAll(async () => {
   if (seededUserIds.length > 0) {
     await db.delete(notifications).where(inArray(notifications.userId, seededUserIds));
     await db.delete(pushSubscriptions).where(inArray(pushSubscriptions.userId, seededUserIds));
-    await db.delete(sessions).where(inArray(sessions.userId, seededUserIds));
     await db.delete(users).where(inArray(users.id, seededUserIds));
   }
   await db.delete(users).where(like(users.email, `${EMAIL_PREFIX}%`));

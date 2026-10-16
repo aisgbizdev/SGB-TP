@@ -44,8 +44,7 @@ describe("LandingPage market preview disclosure", () => {
     expect(section).not.toBeVisible();
     expect(screen.queryByTestId("section-product-preview")).not.toBeInTheDocument();
     expect(calls.filter(({ url }) => url.includes("/api/landing/preview"))).toHaveLength(0);
-    expect(screen.getByTestId("button-get-started")).toHaveAttribute("href", "/register");
-    expect(screen.getByTestId("button-sign-in")).toHaveAttribute("href", "/login");
+    expect(screen.getByTestId("button-get-started")).toHaveAttribute("href", "/analyze");
     expect(screen.getByTestId("link-footer-privacy")).toBeVisible();
 
     fireEvent.click(toggle);
@@ -53,7 +52,7 @@ describe("LandingPage market preview disclosure", () => {
     expect(section).toBeVisible();
     expect(await screen.findByTestId("landing-preview-status")).toHaveTextContent("Live D1");
     await waitFor(() => expect(calls.filter(({ url }) => url.includes("/api/landing/preview"))).toHaveLength(1));
-    expect(screen.getByTestId("landing-preview-login")).toHaveAttribute("href", "/login");
+    expect(screen.getByTestId("landing-preview-login")).toHaveAttribute("href", "/analyze");
 
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");

@@ -1,5 +1,4 @@
 import { Router, type Response } from "express";
-import bcrypt from "bcryptjs";
 import { db } from "../lib/db";
 import {
   users,
@@ -11,7 +10,6 @@ import {
   analyticsEvents,
   aiTokenUsage,
   creditBalances,
-  authEvents,
 } from "@workspace/db/schema";
 import { eq, and, count, sum, desc, sql, ilike, or, inArray, gte, lte } from "drizzle-orm";
 import {
@@ -82,32 +80,6 @@ router.get("/admin/stats", requireAdmin, async (req: AuthRequest, res) => {
     .select({ count: count(users.id) })
     .from(users)
     .where(sql`${users.createdAt} >= ${todayStart}`);
-  // Login/logout counted per EVENT (not distinct user) from auth_events —
-  // deliberately independent of totalAnalysesToday. See lib/session.ts for
-  // why this can't just be inferred from `sessions` row creation/deletion.
-  // Joined against `users` and restricted to role = 'user' so an admin's
-  // own dashboard visits don't inflate a metric meant to reflect real
-  // (non-staff) traffic — uses the account's CURRENT role, not whatever it
-  // was at the moment of that login/logout.
-  const [loginsTodayResult] = await db
-    .select({ count: count(authEvents.id) })
-    .from(authEvents)
-    .innerJoin(users, eq(users.id, authEvents.userId))
-    .where(and(
-      eq(authEvents.eventType, "login"),
-      eq(users.role, "user"),
-      sql`${authEvents.createdAt} >= ${todayStart}`,
-    ));
-  const [logoutsTodayResult] = await db
-    .select({ count: count(authEvents.id) })
-    .from(authEvents)
-    .innerJoin(users, eq(users.id, authEvents.userId))
-    .where(and(
-      eq(authEvents.eventType, "logout"),
-      eq(users.role, "user"),
-      sql`${authEvents.createdAt} >= ${todayStart}`,
-    ));
-
   // User segmentation for cost/revenue/profit accounting — see
   // lib/user-segment.ts for the precedence rule and why it's centralized.
   const [devUsersResult] = await db
@@ -150,8 +122,11 @@ router.get("/admin/stats", requireAdmin, async (req: AuthRequest, res) => {
 
   res.json({
     totalUsersToday: Number(usersTodayResult.count),
-    totalLoginsToday: Number(loginsTodayResult.count),
-    totalLogoutsToday: Number(logoutsTodayResult.count),
+    // Login/logout events no longer exist (built-in auth removed). The fields
+    // stay in the response so the OpenAPI contract and generated clients keep
+    // working; they are always 0 until the new login system reports events.
+    totalLoginsToday: 0,
+    totalLogoutsToday: 0,
     totalFreeUsers: freeUserCount,
     totalPaidUsers: paidUserCount,
     totalDevUsers: devUserCount,
@@ -1021,17 +996,9 @@ router.patch(
 );
 
 router.post("/superadmin/users", requireSuperAdmin, async (req: AuthRequest, res) => {
-  const {
-    email,
-    password,
-    displayName,
-    role,
-    selectedMode,
-    securityQuestion,
-    securityAnswer,
-  } = req.body;
+  const { email, displayName, role, selectedMode } = req.body;
 
-  if (!email || !password || !displayName || !securityQuestion || !securityAnswer) {
+  if (!email || !displayName) {
     res.status(400).json({ error: "Semua field wajib diisi" });
     return;
   }
@@ -1060,22 +1027,13 @@ router.post("/superadmin/users", requireSuperAdmin, async (req: AuthRequest, res
     return;
   }
 
-  const passwordHash = await bcrypt.hash(password, 12);
-  const securityAnswerHash = await bcrypt.hash(
-    securityAnswer.toLowerCase().trim(),
-    12
-  );
-
   const [user] = await db
     .insert(users)
     .values({
       email: email.toLowerCase(),
-      passwordHash,
       displayName,
       role: role ?? "user",
       selectedMode: selectedMode ?? "pro",
-      securityQuestion,
-      securityAnswerHash,
     })
     .returning({
       id: users.id,
@@ -1148,31 +1106,6 @@ router.delete("/superadmin/users/:id", requireSuperAdmin, async (req: AuthReques
   void notifySuperAdminsUserDeleted(outcome.displayName);
 
   res.json({ message: "User berhasil dihapus" });
-});
-
-router.patch("/superadmin/users/:id/password", requireSuperAdmin, async (req: AuthRequest, res) => {
-  const id = Number(req.params["id"]);
-  const { newPassword } = req.body;
-
-  if (!newPassword || newPassword.length < 6) {
-    res.status(400).json({ error: "Password baru minimal 6 karakter" });
-    return;
-  }
-
-  const passwordHash = await bcrypt.hash(newPassword, 12);
-
-  const [updated] = await db
-    .update(users)
-    .set({ passwordHash, updatedAt: new Date() })
-    .where(eq(users.id, id))
-    .returning({ id: users.id });
-
-  if (!updated) {
-    res.status(404).json({ error: "User tidak ditemukan" });
-    return;
-  }
-
-  res.json({ message: "Password berhasil direset" });
 });
 
 router.patch("/superadmin/users/:id/role", requireSuperAdmin, async (req: AuthRequest, res) => {

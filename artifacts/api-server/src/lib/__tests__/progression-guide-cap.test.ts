@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { users, xpLedger } from "@workspace/db/schema";
@@ -11,10 +10,7 @@ describe("guide XP daily cap", () => {
     const suffix = randomBytes(8).toString("hex");
     const [user] = await db.insert(users).values({
       email: `guide-cap-${suffix}@example.test`,
-      passwordHash: await bcrypt.hash("not-used", 4),
       displayName: "Guide cap test",
-      securityQuestion: "test?",
-      securityAnswerHash: await bcrypt.hash("answer", 4),
       notificationTimezone: "UTC",
       progressionNotificationsEnabled: false,
     }).returning({ id: users.id });

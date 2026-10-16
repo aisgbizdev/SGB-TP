@@ -1,14 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { eq, inArray, ilike, like, count } from "drizzle-orm";
 
 import app from "../../app";
 import { db } from "../../lib/db";
 import {
   users,
-  sessions,
   notifications,
 } from "@workspace/db/schema";
 import { applyCreditLedgerEntry } from "../../lib/credits";
@@ -40,27 +38,17 @@ async function createUser(
   const suffix = randomBytes(6).toString("hex");
   const emailExtra = opts.emailExtra ?? "";
   const email = `${EMAIL_PREFIX}-${role}-${emailExtra}${suffix}@example.test`;
-  const passwordHash = await bcrypt.hash("not-used-by-tests", 4);
-  const securityAnswerHash = await bcrypt.hash("answer", 4);
 
   const [row] = await db
     .insert(users)
     .values({
       email,
-      passwordHash,
       displayName: opts.displayName ?? `${DISPLAY_PREFIX} ${role} ${suffix}`,
       role,
-      securityQuestion: "test?",
-      securityAnswerHash,
     })
     .returning({ id: users.id });
 
-  const token = `sa-users-${RUN_ID}-${suffix}-${randomBytes(8).toString("hex")}`;
-  await db.insert(sessions).values({
-    userId: row.id,
-    token,
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-  });
+  const token = `test-user-${row.id}`;
 
   const seed: SeedUser = { id: row.id, email, token };
   seeded.push(seed);
@@ -106,7 +94,6 @@ afterAll(async () => {
 
   if (allIds.length === 0) return;
   await db.delete(notifications).where(inArray(notifications.userId, allIds));
-  await db.delete(sessions).where(inArray(sessions.userId, allIds));
   await db.delete(users).where(inArray(users.id, allIds));
 
   // Final sweep: notifyAdminsUserCreated / notifySuperAdminsUserDeleted are
@@ -179,10 +166,7 @@ describe("requireSuperAdmin gate on /superadmin/users surface", () => {
       .set(...authHeader(superAdmin))
       .send({
         email,
-        password: "Password1!",
         displayName: `${DISPLAY_PREFIX} gate ${suffix}`,
-        securityQuestion: "q?",
-        securityAnswer: "a",
       });
     expect(res.status).toBe(201);
     expect(res.body.email).toBe(email.toLowerCase());
@@ -216,12 +200,9 @@ describe("POST /superadmin/users validation", () => {
     const suffix = randomBytes(4).toString("hex");
     return {
       email: `${EMAIL_PREFIX}-create-${suffix}@example.test`,
-      password: "Password1!",
       displayName: `${DISPLAY_PREFIX} created ${suffix}`,
       role: "user",
       selectedMode: "beginner",
-      securityQuestion: "fav color?",
-      securityAnswer: "blue",
       ...overrides,
     };
   }
@@ -234,35 +215,11 @@ describe("POST /superadmin/users validation", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 when password is missing", async () => {
-    const res = await request(app)
-      .post("/api/superadmin/users")
-      .set(...authHeader(superAdmin))
-      .send(buildPayload({ password: "" }));
-    expect(res.status).toBe(400);
-  });
-
   it("returns 400 when displayName is missing", async () => {
     const res = await request(app)
       .post("/api/superadmin/users")
       .set(...authHeader(superAdmin))
       .send(buildPayload({ displayName: "" }));
-    expect(res.status).toBe(400);
-  });
-
-  it("returns 400 when securityQuestion is missing", async () => {
-    const res = await request(app)
-      .post("/api/superadmin/users")
-      .set(...authHeader(superAdmin))
-      .send(buildPayload({ securityQuestion: "" }));
-    expect(res.status).toBe(400);
-  });
-
-  it("returns 400 when securityAnswer is missing", async () => {
-    const res = await request(app)
-      .post("/api/superadmin/users")
-      .set(...authHeader(superAdmin))
-      .send(buildPayload({ securityAnswer: "" }));
     expect(res.status).toBe(400);
   });
 
@@ -527,10 +484,7 @@ describe("DELETE /superadmin/users/:id", () => {
       .set(...authHeader(superAdmin))
       .send({
         email: victimEmail,
-        password: "Password1!",
         displayName: `${DISPLAY_PREFIX} victim`,
-        securityQuestion: "q?",
-        securityAnswer: "a",
       });
     expect(create.status).toBe(201);
     const victimId: number = create.body.id;

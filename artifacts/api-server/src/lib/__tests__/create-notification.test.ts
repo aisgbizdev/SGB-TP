@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { eq, inArray, like } from "drizzle-orm";
 
 vi.mock("../webpush", () => ({
@@ -34,10 +33,7 @@ async function createTestUser(): Promise<number> {
     .insert(users)
     .values({
       email: `${EMAIL_PREFIX}-${suffix}@example.test`,
-      passwordHash: await bcrypt.hash("not-used", 4),
       displayName: `Notif Helper ${RUN_ID} ${suffix}`,
-      securityQuestion: "test?",
-      securityAnswerHash: await bcrypt.hash("answer", 4),
     })
     .returning({ id: users.id });
   seededUserIds.push(row.id);

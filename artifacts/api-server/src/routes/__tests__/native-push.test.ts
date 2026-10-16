@@ -1,12 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import request from "supertest";
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { eq, inArray, like } from "drizzle-orm";
 
 import app from "../../app";
 import { db } from "../../lib/db";
-import { users, sessions, nativePushDevices } from "@workspace/db/schema";
+import { users, nativePushDevices } from "@workspace/db/schema";
 import {
   nativePushRegisterLimiter,
   nativePushTestLimiter,
@@ -32,19 +31,11 @@ async function createUser(): Promise<SeedUser> {
     .insert(users)
     .values({
       email,
-      passwordHash: await bcrypt.hash("not-used", 4),
       displayName: `Native Push ${RUN_ID} ${suffix}`,
-      securityQuestion: "test?",
-      securityAnswerHash: await bcrypt.hash("answer", 4),
     })
     .returning({ id: users.id });
 
-  const token = `${EMAIL_PREFIX}-${suffix}-${randomBytes(8).toString("hex")}`;
-  await db.insert(sessions).values({
-    userId: row.id,
-    token,
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-  });
+  const token = `test-user-${row.id}`;
   seededUserIds.push(row.id);
   return { id: row.id, email, token };
 }
@@ -67,7 +58,6 @@ beforeAll(async () => {
 afterAll(async () => {
   if (seededUserIds.length > 0) {
     await db.delete(nativePushDevices).where(inArray(nativePushDevices.userId, seededUserIds));
-    await db.delete(sessions).where(inArray(sessions.userId, seededUserIds));
     await db.delete(users).where(inArray(users.id, seededUserIds));
   }
   await db.delete(users).where(like(users.email, `${EMAIL_PREFIX}%`));

@@ -5,12 +5,11 @@
 import { describe, it, expect, afterAll } from "vitest";
 import request from "supertest";
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { eq, inArray, like } from "drizzle-orm";
 
 import app from "../../app";
 import { db } from "../../lib/db";
-import { users, sessions, analyses, aiTokenUsage } from "@workspace/db/schema";
+import { users, analyses, aiTokenUsage } from "@workspace/db/schema";
 import { applyCreditLedgerEntry } from "../../lib/credits";
 
 const RUN_ID = randomBytes(4).toString("hex");
@@ -27,26 +26,16 @@ interface SeedUser {
 async function createUser(role: "user" | "super_admin" = "user"): Promise<SeedUser> {
   const suffix = randomBytes(6).toString("hex");
   const email = `${EMAIL_PREFIX}-${suffix}@example.test`;
-  const passwordHash = await bcrypt.hash("not-used", 4);
-  const securityAnswerHash = await bcrypt.hash("answer", 4);
   const [row] = await db
     .insert(users)
     .values({
       email,
-      passwordHash,
       displayName: `Admin Analytics Tokens Test ${RUN_ID}`,
       role,
-      securityQuestion: "test?",
-      securityAnswerHash,
     })
     .returning({ id: users.id });
 
-  const token = `aatok-${RUN_ID}-${suffix}-${randomBytes(8).toString("hex")}`;
-  await db.insert(sessions).values({
-    userId: row.id,
-    token,
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-  });
+  const token = `test-user-${row.id}`;
   seededUserIds.push(row.id);
   return { id: row.id, email, token };
 }
@@ -86,7 +75,6 @@ async function seedTokenUsage(userId: number, analysisId: number, totalTokens: n
 afterAll(async () => {
   await db.delete(analyses).where(like(analyses.instrument, `${INSTRUMENT_PREFIX}%`));
   if (seededUserIds.length > 0) {
-    await db.delete(sessions).where(inArray(sessions.userId, seededUserIds));
     await db.delete(users).where(inArray(users.id, seededUserIds));
   }
   await db.delete(users).where(like(users.email, `${EMAIL_PREFIX}%`));

@@ -16,20 +16,11 @@ function clientIp(req: Request): string {
   return req.ip ?? req.socket.remoteAddress ?? "unknown";
 }
 
-// Safely derive the email portion of a per-(ip,email) key. Must never throw
-// — limiter middleware runs before the route's Zod schema, so an attacker
-// can ship `email: 123` or `email: {}` and we'd crash with a 500 instead of
-// a clean 400 if we naively called `.toLowerCase()` on a non-string.
-function emailKeyPart(req: Request): string {
-  const v = req.body?.email;
-  return typeof v === "string" ? v.toLowerCase() : "";
-}
-
 // Rate limiters are a production safety net (DoS, credential stuffing,
 // sign-up flooding). In local dev and the e2e harness they only get in
 // the way — the e2e suite registers many users from a single IP in a
-// short window and would otherwise hit `registerLimiter` and fail with
-// 429 "Terlalu banyak pendaftaran". Bypass when NODE_ENV is explicitly
+// short window and would otherwise hit a limiter and fail with
+// 429. Bypass when NODE_ENV is explicitly
 // "development" (set by the e2e test-server). The unit-test suite runs
 // with NODE_ENV=test (vitest default) and continues to exercise the
 // real limiter so the 429 / Retry-After contract stays covered.
@@ -66,151 +57,6 @@ function buildLimiter(opts: RateLimitOptions) {
   };
   return Object.assign(middleware, { store });
 }
-
-export const forgotPasswordQuestionLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  keyFn: (req) => `${clientIp(req)}|${emailKeyPart(req)}`,
-  message:
-    "Terlalu banyak permintaan reset password. Coba lagi dalam beberapa menit. / Too many password reset requests. Try again in a few minutes.",
-});
-
-export const forgotPasswordVerifyLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  keyFn: (req) => `${clientIp(req)}|${emailKeyPart(req)}`,
-  message:
-    "Terlalu banyak percobaan jawaban keamanan. Akun terkunci sementara. / Too many security answer attempts. Account locked temporarily.",
-});
-
-// /auth/login runs bcrypt.compare on every request — that's CPU-expensive by
-// design. Without a limiter it's a cheap DoS vector and an open door for
-// credential-stuffing. Keying on `ip|email` lets honest users on a shared
-// IP keep retrying their own account without being blocked by a neighbour.
-export const loginLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  keyFn: (req) => `${clientIp(req)}|${emailKeyPart(req)}`,
-  message:
-    "Terlalu banyak percobaan login. Coba lagi dalam beberapa menit. / Too many login attempts. Try again in a few minutes.",
-});
-
-// /auth/register has no identifier yet, so the limiter is per-IP. Sized
-// generously so households / offices behind a single NAT can still legitimately
-// sign up multiple accounts within an hour.
-export const registerLimiter = buildLimiter({
-  windowMs: 60 * 60 * 1000,
-  max: 10,
-  keyFn: (req) => clientIp(req),
-  message:
-    "Terlalu banyak pendaftaran dari alamat ini. Coba lagi dalam satu jam. / Too many sign-ups from this address. Try again in an hour.",
-});
-
-// Google OAuth entrypoint + callback. Per-IP — there's no email identifier
-// at redirect time. Sized to allow a few retries after a cancelled consent
-// screen while still capping automated abuse of the token-exchange path.
-export const googleOAuthLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  keyFn: (req) => clientIp(req),
-  message:
-    "Terlalu banyak percobaan login Google. Coba lagi dalam beberapa menit. / Too many Google login attempts. Try again in a few minutes.",
-});
-
-// POST /auth/google/native — per-IP; the caller isn't authenticated yet.
-export const googleNativeLoginLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  keyFn: (req) => clientIp(req),
-  message:
-    "Terlalu banyak percobaan login Google. Coba lagi dalam beberapa menit. / Too many Google login attempts. Try again in a few minutes.",
-});
-
-// POST /auth/apple/native — per-IP; same budget as its Google counterpart.
-export const appleNativeLoginLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  keyFn: (req) => clientIp(req),
-  message:
-    "Terlalu banyak percobaan login Apple. Coba lagi dalam beberapa menit. / Too many Apple login attempts. Try again in a few minutes.",
-});
-
-// Facebook OAuth entrypoint + callback — per-IP, same budget as Google's.
-export const facebookOAuthLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  keyFn: (req) => clientIp(req),
-  message:
-    "Terlalu banyak percobaan login Facebook. Coba lagi dalam beberapa menit. / Too many Facebook login attempts. Try again in a few minutes.",
-});
-
-// TikTok OAuth entrypoint + callback — per-IP, same budget as Google's.
-export const tiktokOAuthLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  keyFn: (req) => clientIp(req),
-  message:
-    "Terlalu banyak percobaan login TikTok. Coba lagi dalam beberapa menit. / Too many TikTok login attempts. Try again in a few minutes.",
-});
-
-// POST /auth/tiktok/complete-signup — per-IP; caller isn't authenticated
-// yet (this is what actually creates the account).
-export const tiktokCompleteSignupLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  keyFn: (req) => clientIp(req),
-  message:
-    "Terlalu banyak percobaan. Coba lagi dalam beberapa menit. / Too many attempts. Try again in a few minutes.",
-});
-
-// GET /auth/{facebook,tiktok}/mobile/start — per-IP; the caller isn't
-// authenticated (this is the very first hop of the mobile OAuth flow).
-export const mobileOauthStartLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  keyFn: (req) => clientIp(req),
-  message:
-    "Terlalu banyak percobaan login. Coba lagi dalam beberapa menit. / Too many login attempts. Try again in a few minutes.",
-});
-
-// POST /auth/mobile/exchange — per-IP. Deliberately tighter than the start
-// limiter: a legitimate app calls this exactly once per sign-in, right
-// after the browser redirect completes, so a burst of attempts here is a
-// much stronger abuse signal than repeated /mobile/start hits.
-export const mobileOauthExchangeLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  keyFn: (req) => clientIp(req),
-  message:
-    "Terlalu banyak percobaan. Coba lagi dalam beberapa menit. / Too many attempts. Try again in a few minutes.",
-});
-
-// POST /auth/reauth/google and POST /auth/reauth/apple — per-user (mounted
-// after requireAuth). Tighter budget: a legit re-auth happens once right
-// before a sensitive action. Shared across both providers rather than
-// duplicated per-provider, matching how DELETE /auth/account already
-// handles either provider's reauthToken through one code path.
-export const reauthLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  keyFn: (req) => {
-    const id = (req as Request & { userId?: number }).userId;
-    return typeof id === "number" ? `user-${id}` : clientIp(req);
-  },
-  message:
-    "Terlalu banyak percobaan verifikasi ulang. Coba lagi nanti. / Too many re-authentication attempts. Try again later.",
-});
-
-// /auth/forgot-password/reset is already gated by a 64-char crypto-random token,
-// but a per-IP limiter is consistent with the rest of the reset flow and stops
-// trivial flooding of the bcrypt path on the success branch.
-export const forgotPasswordResetLimiter = buildLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  keyFn: (req) => clientIp(req),
-  message:
-    "Terlalu banyak percobaan reset password. Coba lagi dalam beberapa menit. / Too many password reset attempts. Try again in a few minutes.",
-});
 
 // Per-user limiter for POST /api/push/test. Keyed off `req.userId`, so it
 // must be mounted after `requireAuth`.
@@ -253,21 +99,6 @@ export const nativePushRegisterLimiter = buildLimiter({
   },
   message:
     "Terlalu banyak pendaftaran perangkat. Coba lagi sebentar lagi. / Too many device registrations. Try again in a bit.",
-});
-
-// Store-readiness (P0): per-user limiter for the destructive account-
-// deletion endpoint. Deliberately tight — this is a one-way, catastrophic
-// action, so there is no legitimate reason to hit it more than a couple
-// times in a day (retry after a failed attempt).
-export const accountDeletionLimiter = buildLimiter({
-  windowMs: 24 * 60 * 60 * 1000,
-  max: 5,
-  keyFn: (req) => {
-    const id = (req as Request & { userId?: number }).userId;
-    return typeof id === "number" ? `user-${id}` : clientIp(req);
-  },
-  message:
-    "Terlalu banyak percobaan penghapusan akun. Coba lagi besok atau hubungi support. / Too many account deletion attempts. Try again tomorrow or contact support.",
 });
 
 // Per-user limiter for the manual trade-journal endpoints (task #161).
@@ -358,39 +189,11 @@ export const dokuNotifyLimiter = buildLimiter({
   keyFn: (req) => clientIp(req),
 });
 
-// POST /auth/web-handoff — per-user (mounted after requireAuth), falling
-// back to per-IP for the rare case req.userId isn't set yet. Same budget
-// as reauthLimiter: a legit handoff happens once per menu tap.
-export const webHandoffIssueLimiter = buildLimiter({
-  windowMs: 60 * 1000,
-  max: 5,
-  keyFn: (req) => {
-    const id = (req as Request & { userId?: number }).userId;
-    return typeof id === "number" ? `user-${id}` : clientIp(req);
-  },
-  message: "Terlalu banyak percobaan. Coba lagi sebentar lagi. / Too many attempts. Try again shortly.",
-});
-
-// GET /auth/web-handoff/consume — per-IP; this endpoint is unauthenticated
-// (opened directly in the system browser) so there's no userId to key on.
-export const webHandoffConsumeLimiter = buildLimiter({
-  windowMs: 60 * 1000,
-  max: 20,
-  keyFn: (req) => clientIp(req),
-  message: "Terlalu banyak percobaan. Coba lagi sebentar lagi. / Too many attempts. Try again shortly.",
-});
-
 setInterval(() => {
   const now = Date.now();
   for (const limiter of [
-    forgotPasswordQuestionLimiter,
-    forgotPasswordVerifyLimiter,
-    loginLimiter,
-    registerLimiter,
-    forgotPasswordResetLimiter,
     pushTestLimiter,
     nativePushRegisterLimiter,
-    accountDeletionLimiter,
     journalWriteLimiter,
     journalReadLimiter,
     performanceLimiter,
@@ -398,8 +201,6 @@ setInterval(() => {
     trackEventLimiter,
     dokuCheckoutLimiter,
     dokuNotifyLimiter,
-    webHandoffIssueLimiter,
-    webHandoffConsumeLimiter,
   ]) {
     for (const [k, b] of limiter.store) {
       if (b.resetAt <= now) limiter.store.delete(k);

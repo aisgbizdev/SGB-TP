@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Camera, Eye, EyeOff, Sun, Moon, LogOut, Shield, Loader2, ChevronRight, ArrowUpRight, Bell, BellRing, Trash2, KeyRound, Wallet } from "lucide-react";
+import { Camera, Sun, Moon, Shield, Loader2, ChevronRight, ArrowUpRight, Bell, BellRing, Trash2, Wallet } from "lucide-react";
 import { avatarSrc, uploadAvatar, validateAvatarFile } from "@/lib/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,9 +12,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import {
   useUpdateProfile,
-  useChangePassword,
-  useChangeSecurityQuestion,
-  useLogout,
   getGetMeQueryKey,
   useGetProgressionSummary,
   useGetCreditBalance,
@@ -22,7 +19,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-import { useTranslation, getSecurityQuestionOptions } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
 import { useTrackOutbound } from "@/hooks/use-track-outbound";
 import { SHOW_SPONSOR } from "@/lib/sponsor-flag";
 import { ProgressionEmblem } from "@/components/progression/progression-emblem";
@@ -38,9 +35,6 @@ export default function ProfilePage() {
   const queryClient = useQueryClient();
 
   const updateProfile = useUpdateProfile();
-  const changePassword = useChangePassword();
-  const changeSecurityQuestion = useChangeSecurityQuestion();
-  const logout = useLogout();
 
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState(user?.displayName ?? "");
@@ -89,22 +83,6 @@ export default function ProfilePage() {
       setAvatarUploading(false);
     }
   };
-  const [showPasswordSection, setShowPasswordSection] = useState(false);
-  const [showSecuritySection, setShowSecuritySection] = useState(false);
-
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  const [secCurrentPassword, setSecCurrentPassword] = useState("");
-  const [showSecCurrentPassword, setShowSecCurrentPassword] = useState(false);
-  const [secQuestion, setSecQuestion] = useState("");
-  const [secAnswer, setSecAnswer] = useState("");
-  const [showSecAnswer, setShowSecAnswer] = useState(false);
-
   const handleThemeToggle = async (th: "light" | "dark") => {
     if (th === theme || themeSaving || updateProfile.isPending) return;
     const previousTheme = theme;
@@ -135,60 +113,6 @@ export default function ProfilePage() {
     } catch {
       toast({ title: t.profile.name_update_failed, variant: "destructive" });
     }
-  };
-
-  const handleChangePassword = async () => {
-    if (!currentPassword || !newPassword || !confirmPassword) return;
-    if (newPassword.length < 6) {
-      toast({ title: t.profile.password_min_length, variant: "destructive" });
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      toast({ title: t.profile.password_mismatch, variant: "destructive" });
-      return;
-    }
-    try {
-      await changePassword.mutateAsync({ data: { currentPassword, newPassword } });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setShowPasswordSection(false);
-      toast({ title: t.profile.password_updated });
-    } catch (err: unknown) {
-      toast({ title: ((err as { data?: { error?: string } })?.data?.error) ?? t.profile.password_failed, variant: "destructive" });
-    }
-  };
-
-  const handleChangeSecurityQuestion = async () => {
-    if (!secCurrentPassword || !secQuestion || !secAnswer) return;
-    try {
-      await changeSecurityQuestion.mutateAsync({
-        data: { currentPassword: secCurrentPassword, securityQuestion: secQuestion, securityAnswer: secAnswer },
-      });
-      setSecCurrentPassword("");
-      setSecQuestion("");
-      setSecAnswer("");
-      setShowSecuritySection(false);
-      toast({ title: t.profile.security_updated });
-    } catch (err: unknown) {
-      toast({ title: ((err as { data?: { error?: string } })?.data?.error) ?? t.profile.security_failed, variant: "destructive" });
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await logout.mutateAsync();
-    } catch {
-      // Even if the server call fails (e.g. session already expired),
-      // continue to fully reset client state below.
-    }
-    queryClient.cancelQueries();
-    queryClient.clear();
-    // Hard navigation to the landing page so every mounted component
-    // (notifications SSE, me query, etc.) is torn down. Avoids the
-    // dev-mode 401 overlay caused by zombie refetches after the
-    // session cookie is cleared.
-    window.location.assign("/");
   };
 
   return (
@@ -369,175 +293,6 @@ export default function ProfilePage() {
             </Card>
 
             <Card className="p-2 shadow-sm divide-y divide-border/60" data-testid="profile-settings-group">
-              <div className="py-1">
-                <button
-                  type="button"
-                  className="w-full flex items-center gap-3.5 p-3.5 rounded-lg hover:bg-muted/40 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => setShowPasswordSection((v) => !v)}
-                  data-testid="button-toggle-password-section"
-                  aria-expanded={showPasswordSection}
-                >
-                  <KeyRound className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span className="flex-1 text-sm font-medium text-foreground">{t.profile.change_password}</span>
-                  <ChevronRight className={cn("w-4 h-4 text-muted-foreground transition-transform shrink-0", showPasswordSection && "rotate-90")} />
-                </button>
-                {showPasswordSection && (
-                  <div className="p-4 mx-2 mb-3 rounded-lg bg-muted/20 border border-border/50 space-y-3">
-                    <div className="relative">
-                      <Input
-                        type={showCurrentPassword ? "text" : "password"}
-                        placeholder={t.profile.current_password_placeholder}
-                        value={currentPassword}
-                        onChange={(e) => setCurrentPassword(e.target.value)}
-                        data-testid="input-current-password"
-                        className="h-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowCurrentPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                        data-testid="button-toggle-current-password"
-                      >
-                        {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                    <div className="relative">
-                      <Input
-                        type={showNewPassword ? "text" : "password"}
-                        placeholder={t.profile.new_password_placeholder}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        data-testid="input-new-password"
-                        className="h-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                        data-testid="button-toggle-new-password"
-                      >
-                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                    <div className="relative">
-                      <Input
-                        type={showConfirmPassword ? "text" : "password"}
-                        placeholder={t.profile.confirm_password_placeholder}
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        data-testid="input-confirm-password"
-                        className={cn("h-10", confirmPassword && newPassword && confirmPassword !== newPassword && "border-red-400")}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                        data-testid="button-toggle-confirm-password"
-                      >
-                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                    {confirmPassword && newPassword && confirmPassword !== newPassword && (
-                      <p className="text-xs text-red-500 -mt-1">{t.profile.password_mismatch}</p>
-                    )}
-                    <Button
-                      className="w-full sm:w-auto mt-2"
-                      onClick={handleChangePassword}
-                      disabled={changePassword.isPending}
-                      data-testid="button-save-password"
-                    >
-                      {changePassword.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                      {t.profile.save_password}
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              <div className="py-1">
-                <button
-                  type="button"
-                  className="w-full flex items-center gap-3.5 p-3.5 rounded-lg hover:bg-muted/40 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => setShowSecuritySection((v) => !v)}
-                  data-testid="button-toggle-security-section"
-                  aria-expanded={showSecuritySection}
-                >
-                  <Shield className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span className="flex-1 text-sm font-medium text-foreground">{t.auth.security_question_label}</span>
-                  <ChevronRight className={cn("w-4 h-4 text-muted-foreground transition-transform shrink-0", showSecuritySection && "rotate-90")} />
-                </button>
-                {showSecuritySection && (
-                  <div className="p-4 mx-2 mb-3 rounded-lg bg-muted/20 border border-border/50 space-y-3">
-                    <div className="relative">
-                      <Input
-                        type={showSecCurrentPassword ? "text" : "password"}
-                        placeholder={t.profile.current_password_placeholder}
-                        value={secCurrentPassword}
-                        onChange={(e) => setSecCurrentPassword(e.target.value)}
-                        data-testid="input-sec-current-password"
-                        className="h-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowSecCurrentPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                        data-testid="button-toggle-sec-current-password"
-                      >
-                        {showSecCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                    <select
-                      className="w-full px-3 h-10 text-sm rounded-md border border-input bg-background text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      value={secQuestion}
-                      onChange={(e) => setSecQuestion(e.target.value)}
-                      data-testid="select-security-question"
-                    >
-                      <option value="">{t.auth.security_question_placeholder}</option>
-                      {getSecurityQuestionOptions(lang).map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                    <div className="relative">
-                      <Input
-                        type={showSecAnswer ? "text" : "password"}
-                        placeholder={t.auth.security_answer_placeholder}
-                        value={secAnswer}
-                        onChange={(e) => setSecAnswer(e.target.value)}
-                        data-testid="input-security-answer"
-                        className="h-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowSecAnswer((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                      >
-                        {showSecAnswer ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                    <Button
-                      className="w-full sm:w-auto mt-2"
-                      onClick={handleChangeSecurityQuestion}
-                      disabled={changeSecurityQuestion.isPending}
-                      data-testid="button-save-security-question"
-                    >
-                      {changeSecurityQuestion.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                      {t.profile.save_security}
-                    </Button>
-                  </div>
-                )}
-              </div>
-              <button
-                type="button"
-                className="w-full flex items-center gap-3.5 p-3.5 rounded-lg hover:bg-muted/40 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => setLocation("/profile/privacy-security")}
-                data-testid="button-go-privacy-security"
-              >
-                <Shield className="w-4 h-4 text-muted-foreground shrink-0" />
-                <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-medium text-foreground">{t.profile.privacy_security_title}</span>
-                  <span className="block text-xs leading-relaxed text-muted-foreground">{t.profile.privacy_security_subtitle}</span>
-                </span>
-                <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-              </button>
               <button
                 type="button"
                 className="w-full flex items-center gap-3.5 p-3.5 rounded-lg hover:bg-muted/40 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -665,22 +420,6 @@ export default function ProfilePage() {
             )}
 
           </div>
-        </div>
-
-        {/* Layout's own footer (every authenticated page) now carries the
-            App Store / Play Store badges — no need to duplicate them here. */}
-
-        <div className="flex justify-start sm:justify-end pt-2">
-          <Button
-            variant="outline"
-            className="w-full sm:w-auto h-10 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={handleLogout}
-            disabled={logout.isPending}
-            data-testid="button-logout"
-          >
-            {logout.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LogOut className="w-4 h-4 mr-2" />}
-            {t.profile.logout}
-          </Button>
         </div>
       </div>
     </Layout>
